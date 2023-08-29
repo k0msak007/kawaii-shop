@@ -37,7 +37,7 @@ func (h *middlewaresHandler) Cors() fiber.Handler {
 		Next:          cors.ConfigDefault.Next,
 		AllowOrigins:  "*",
 		AllowHeaders:  "",
-		AllowMethods:  " POST, HEAD, PUT, DELETE, PATCH",
+		AllowMethods:  "GET, POST, HEAD, PUT, DELETE, PATCH",
 		ExposeHeaders: "",
 		MaxAge:        0,
 	})
