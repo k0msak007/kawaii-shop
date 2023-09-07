@@ -1,6 +1,8 @@
 package usersHandlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/k0msak007/kawaii-shop/config"
 	"github.com/k0msak007/kawaii-shop/modules/entities"
@@ -18,6 +20,7 @@ const (
 	signOutErr            userHandlersErrCode = "users-004"
 	signUpAdminErr        userHandlersErrCode = "users-005"
 	generateAdminTokenErr userHandlersErrCode = "users-006"
+	getUserProfileErr     userHandlersErrCode = "users-007"
 )
 
 type IUsersHandler interface {
@@ -27,6 +30,7 @@ type IUsersHandler interface {
 	SignOut(c *fiber.Ctx) error
 	SignUpAdmin(c *fiber.Ctx) error
 	GenerateAdminToken(c *fiber.Ctx) error
+	GetUserProfile(c *fiber.Ctx) error
 }
 
 type usersHandler struct {
@@ -218,4 +222,28 @@ func (h *usersHandler) SignOut(c *fiber.Ctx) error {
 	}
 
 	return entities.NewResponse(c).Success(fiber.StatusOK, nil).Res()
+}
+
+func (h *usersHandler) GetUserProfile(c *fiber.Ctx) error {
+	userId := strings.TrimPrefix(c.Params("user_id"), " ")
+
+	result, err := h.usersUsecase.GetUserProfile(userId)
+	if err != nil {
+		switch err.Error() {
+		case "get user failed: sql: no rows in result set":
+			return entities.NewResponse(c).Error(
+				fiber.ErrBadRequest.Code,
+				string(getUserProfileErr),
+				err.Error(),
+			).Res()
+		default:
+			return entities.NewResponse(c).Error(
+				fiber.ErrInternalServerError.Code,
+				string(getUserProfileErr),
+				err.Error(),
+			).Res()
+		}
+	}
+
+	return entities.NewResponse(c).Success(fiber.StatusOK, result).Res()
 }
