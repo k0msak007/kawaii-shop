@@ -10,6 +10,7 @@ import (
 	"github.com/k0msak007/kawaii-shop/modules/entities"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresUsecases"
 	"github.com/k0msak007/kawaii-shop/pkg/kawaiiauth"
+	"github.com/k0msak007/kawaii-shop/pkg/utils"
 )
 
 type middlewaresHandlersError string
@@ -18,6 +19,7 @@ const (
 	routerCheckErr middlewaresHandlersError = "router-001"
 	jwtAuthErr     middlewaresHandlersError = "router-002"
 	paramsCheckErr middlewaresHandlersError = "router-003"
+	authorizeErr   middlewaresHandlersError = "router-004"
 )
 
 type IMiddlewaresHandler interface {
@@ -26,6 +28,7 @@ type IMiddlewaresHandler interface {
 	Logger() fiber.Handler
 	JwtAuth() fiber.Handler
 	ParamsCheck() fiber.Handler
+	Authorize(expectRoleId ...int) fiber.Handler
 }
 
 type middlewaresHandler struct {
@@ -110,5 +113,47 @@ func (h *middlewaresHandler) ParamsCheck() fiber.Handler {
 		}
 
 		return c.Next()
+	}
+}
+
+func (h *middlewaresHandler) Authorize(expectRoleId ...int) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		userRoleId, ok := c.Locals("userRoleId").(int)
+		if !ok {
+			return entities.NewResponse(c).Error(
+				fiber.ErrUnauthorized.Code,
+				string(authorizeErr),
+				"user_id is not type int",
+			).Res()
+		}
+
+		roles, err := h.middlewaresUsecases.FindRole()
+		if err != nil {
+			return entities.NewResponse(c).Error(
+				fiber.ErrInternalServerError.Code,
+				string(authorizeErr),
+				err.Error(),
+			).Res()
+		}
+
+		sum := 0
+		for _, v := range expectRoleId {
+			sum += v
+		}
+
+		expectValueBinary := utils.BinaryConverter(sum, len(roles))
+		userValueBinary := utils.BinaryConverter(userRoleId, len(roles))
+
+		for i := range userValueBinary {
+			if userValueBinary[i]&expectValueBinary[i] == 1 {
+				return c.Next()
+			}
+		}
+
+		return entities.NewResponse(c).Error(
+			fiber.ErrUnauthorized.Code,
+			string(authorizeErr),
+			"no permission to access",
+		).Res()
 	}
 }
