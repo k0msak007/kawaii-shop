@@ -1,9 +1,13 @@
 package middlewaresUsecases
 
-import "github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresRepositories"
+import (
+	"github.com/k0msak007/kawaii-shop/modules/middlewares"
+	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresRepositories"
+)
 
 type IMiddlewaresUsecases interface {
 	FindAccessToken(userId, access_token string) bool
+	FindRole() ([]*middlewares.Role, error)
 }
 
 type middlewaresUsecases struct {
@@ -18,4 +22,13 @@ func MiddlewaresUsecases(middlewaresRepository middlewaresRepositories.IMiddlewa
 
 func (u *middlewaresUsecases) FindAccessToken(userId, accessToken string) bool {
 	return u.middlewaresRepository.FindAccessToken(userId, accessToken)
+}
+
+func (u *middlewaresUsecases) FindRole() ([]*middlewares.Role, error) {
+	roles, err := u.middlewaresRepository.FindRole()
+	if err != nil {
+		return nil, err
+	}
+
+	return roles, nil
 }
