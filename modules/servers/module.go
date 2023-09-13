@@ -55,7 +55,7 @@ func (m *moduleFactory) UsersModule() {
 	router := m.r.Group("/users")
 
 	router.Post("/signup", m.mid.ApiKeyAuth(), handler.SignUpCustomer)
-	router.Post("/signin", m.mid.ApiKeyAuth(), handler.SignIn)
+	router.Post("/signin", handler.SignIn)
 	router.Post("/refresh", m.mid.ApiKeyAuth(), handler.RefressPassport)
 	router.Post("/signout", m.mid.ApiKeyAuth(), handler.SignOut)
 	router.Post("/signup-admin", m.mid.JwtAuth(), m.mid.Authorize(2), handler.SignUpAdmin)
@@ -71,6 +71,10 @@ func (m *moduleFactory) AppinfoModule() {
 
 	router := m.r.Group("/appinfo")
 
-	router.Get("/categorires", m.mid.ApiKeyAuth(), handler.FindCategory)
+	router.Post("/categories", m.mid.JwtAuth(), m.mid.Authorize(2), handler.AddCategory)
+
+	router.Get("/categories", m.mid.ApiKeyAuth(), handler.FindCategory)
 	router.Get("/apikey", m.mid.JwtAuth(), m.mid.Authorize(2), handler.GenerateApiKey)
+
+	router.Delete("/:category_id/categories", m.mid.JwtAuth(), m.mid.Authorize(2), handler.RemoveCategory)
 }
