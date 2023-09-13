@@ -29,6 +29,10 @@ type kawaiiAdmin struct {
 	*kawaiiauth
 }
 
+type kawaiiApiKey struct {
+	*kawaiiauth
+}
+
 type kawaiiMapClaims struct {
 	Claims *users.UserClaims `json:"claims"`
 	jwt.RegisteredClaims
@@ -39,6 +43,10 @@ type IKawaiiAuth interface {
 }
 
 type IKawaiiAdmin interface {
+	SignToken() string
+}
+
+type IKawaiiApiKey interface {
 	SignToken() string
 }
 
@@ -62,6 +70,14 @@ func (a *kawaiiAdmin) SignToken() string {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, a.mapClaims)
 
 	ss, _ := token.SignedString(a.cfg.AdminKey())
+
+	return ss
+}
+
+func (a *kawaiiApiKey) SignToken() string {
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, a.mapClaims)
+
+	ss, _ := token.SignedString(a.cfg.ApiKey())
 
 	return ss
 }
@@ -118,6 +134,32 @@ func ParseAdminToken(cfg config.IJwtConfig, tokenString string) (*kawaiiMapClaim
 	}
 }
 
+func ParseApiKey(cfg config.IJwtConfig, tokenString string) (*kawaiiMapClaims, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &kawaiiMapClaims{}, func(t *jwt.Token) (interface{}, error) {
+		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+			return nil, fmt.Errorf("signing method is invalid")
+		}
+
+		return cfg.ApiKey(), nil
+	})
+
+	if err != nil {
+		if errors.Is(err, jwt.ErrTokenMalformed) {
+			return nil, fmt.Errorf("token format is invalid")
+		} else if errors.Is(err, jwt.ErrTokenExpired) {
+			return nil, fmt.Errorf("token had expired")
+		} else {
+			return nil, fmt.Errorf("parse token failed: %v", err)
+		}
+	}
+
+	if claims, ok := token.Claims.(*kawaiiMapClaims); ok {
+		return claims, nil
+	} else {
+		return nil, fmt.Errorf("claims type is invalid")
+	}
+}
+
 func RepeatToken(cfg config.IJwtConfig, claims *users.UserClaims, exp int64) string {
 	obj := &kawaiiauth{
 		cfg: cfg,
@@ -144,6 +186,8 @@ func NewKawaiiAuth(tokenType string, cfg config.IJwtConfig, claims *users.UserCl
 		return newRefreshToken(cfg, claims), nil
 	case string(Admin):
 		return newAdminToken(cfg), nil
+	case string(ApiKey):
+		return newApiKey(cfg), nil
 	default:
 		return nil, fmt.Errorf("unknown token type")
 	}
@@ -160,6 +204,7 @@ func newAccessToken(cfg config.IJwtConfig, claims *users.UserClaims) IKawaiiAuth
 				Audience:  []string{"customer", "admin"},
 				ExpiresAt: jwtTimeDurationCal(cfg.AccessExpiresAt()),
 				NotBefore: jwt.NewNumericDate(time.Now()),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		},
 	}
@@ -176,6 +221,7 @@ func newRefreshToken(cfg config.IJwtConfig, claims *users.UserClaims) IKawaiiAut
 				Audience:  []string{"customer", "admin"},
 				ExpiresAt: jwtTimeDurationCal(cfg.RefreshExpiresAt()),
 				NotBefore: jwt.NewNumericDate(time.Now()),
+				IssuedAt:  jwt.NewNumericDate(time.Now()),
 			},
 		},
 	}
@@ -193,6 +239,26 @@ func newAdminToken(cfg config.IJwtConfig) IKawaiiAuth {
 					Audience:  []string{"admin"},
 					ExpiresAt: jwtTimeDurationCal(300),
 					NotBefore: jwt.NewNumericDate(time.Now()),
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
+				},
+			},
+		},
+	}
+}
+
+func newApiKey(cfg config.IJwtConfig) IKawaiiAuth {
+	return &kawaiiApiKey{
+		&kawaiiauth{
+			cfg: cfg,
+			mapClaims: &kawaiiMapClaims{
+				Claims: nil,
+				RegisteredClaims: jwt.RegisteredClaims{
+					Issuer:    "kawaiishop-api",
+					Subject:   "api-key",
+					Audience:  []string{"admin", "customer"},
+					ExpiresAt: jwt.NewNumericDate(time.Now().AddDate(2, 0, 0)),
+					NotBefore: jwt.NewNumericDate(time.Now()),
+					IssuedAt:  jwt.NewNumericDate(time.Now()),
 				},
 			},
 		},

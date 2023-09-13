@@ -2,6 +2,9 @@ package servers
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoHandlers"
+	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoRepositories"
+	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoUsecases"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresHandlers"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresRepositories"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresUsecases"
@@ -14,6 +17,7 @@ import (
 type IModuleFactory interface {
 	MonitorModule()
 	UsersModule()
+	AppinfoModule()
 }
 
 type moduleFactory struct {
@@ -50,12 +54,27 @@ func (m *moduleFactory) UsersModule() {
 
 	router := m.r.Group("/users")
 
-	router.Post("/signup", handler.SignUpCustomer)
+	router.Post("/signup", m.mid.ApiKeyAuth(), handler.SignUpCustomer)
 	router.Post("/signin", handler.SignIn)
-	router.Post("/refresh", handler.RefressPassport)
-	router.Post("/signout", handler.SignOut)
-	router.Post("/signup-admin", handler.SignUpAdmin)
+	router.Post("/refresh", m.mid.ApiKeyAuth(), handler.RefressPassport)
+	router.Post("/signout", m.mid.ApiKeyAuth(), handler.SignOut)
+	router.Post("/signup-admin", m.mid.JwtAuth(), m.mid.Authorize(2), handler.SignUpAdmin)
 
 	router.Get("/:user_id", m.mid.JwtAuth(), m.mid.ParamsCheck(), handler.GetUserProfile)
 	router.Get("/admin/secret", m.mid.JwtAuth(), m.mid.Authorize(2), handler.GenerateAdminToken)
+}
+
+func (m *moduleFactory) AppinfoModule() {
+	repository := appinfoRepositories.AppinfoRepository(m.s.db)
+	usecases := appinfoUsecases.AppinfoUsecase(repository)
+	handler := appinfoHandlers.AppinfoHandler(m.s.cfg, usecases)
+
+	router := m.r.Group("/appinfo")
+
+	router.Post("/categories", m.mid.JwtAuth(), m.mid.Authorize(2), handler.AddCategory)
+
+	router.Get("/categories", m.mid.ApiKeyAuth(), handler.FindCategory)
+	router.Get("/apikey", m.mid.JwtAuth(), m.mid.Authorize(2), handler.GenerateApiKey)
+
+	router.Delete("/:category_id/categories", m.mid.JwtAuth(), m.mid.Authorize(2), handler.RemoveCategory)
 }
