@@ -5,6 +5,8 @@ import (
 	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoHandlers"
 	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoRepositories"
 	"github.com/k0msak007/kawaii-shop/modules/appinfo/appinfoUsecases"
+	"github.com/k0msak007/kawaii-shop/modules/files/filesHandlers"
+	"github.com/k0msak007/kawaii-shop/modules/files/filesUsecases"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresHandlers"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresRepositories"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresUsecases"
@@ -18,6 +20,7 @@ type IModuleFactory interface {
 	MonitorModule()
 	UsersModule()
 	AppinfoModule()
+	FilesModule()
 }
 
 type moduleFactory struct {
@@ -77,4 +80,14 @@ func (m *moduleFactory) AppinfoModule() {
 	router.Get("/apikey", m.mid.JwtAuth(), m.mid.Authorize(2), handler.GenerateApiKey)
 
 	router.Delete("/:category_id/categories", m.mid.JwtAuth(), m.mid.Authorize(2), handler.RemoveCategory)
+}
+
+func (m *moduleFactory) FilesModule() {
+	usecases := filesUsecases.FileUsecase(m.s.cfg)
+	handler := filesHandlers.FileHandler(m.s.cfg, usecases)
+
+	router := m.r.Group("/files")
+
+	router.Post("/upload", m.mid.JwtAuth(), m.mid.Authorize(2), handler.UploadFiles)
+	router.Patch("/delete", m.mid.JwtAuth(), m.mid.Authorize(2), handler.DeleteFile)
 }
