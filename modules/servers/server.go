@@ -51,6 +51,7 @@ func (s *server) Start() {
 	module.UsersModule()
 	module.AppinfoModule()
 	module.FilesModule()
+	module.ProductsModule()
 
 	s.app.Use(middlewares.RouterCheck())
 
