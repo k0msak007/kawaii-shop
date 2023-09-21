@@ -3,10 +3,10 @@ package productsPatterns
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/jmoiron/sqlx"
 	"github.com/k0msak007/kawaii-shop/modules/entities"
+	"github.com/k0msak007/kawaii-shop/modules/files"
 	"github.com/k0msak007/kawaii-shop/modules/files/filesUsecases"
 	"github.com/k0msak007/kawaii-shop/modules/products"
 )
@@ -125,9 +125,6 @@ func (b *updateProductBuilder) updateCategory() error {
 }
 
 func (b *updateProductBuilder) insertImages() error {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
-	defer cancel()
-
 	query := `
 		INSERT INTO "images" (
 			"filename",
@@ -154,7 +151,7 @@ func (b *updateProductBuilder) insertImages() error {
 	}
 
 	if _, err := b.tx.ExecContext(
-		ctx,
+		context.Background(),
 		query,
 		valueStack...,
 	); err != nil {
@@ -166,10 +163,44 @@ func (b *updateProductBuilder) insertImages() error {
 }
 
 func (b *updateProductBuilder) getOldImages() []*entities.Image {
-	return nil
+	query := `
+		SELECT
+			"id",
+			"filename",
+			"url"
+		FROM "images"
+		WHERE "product_id" = $1
+	`
+
+	images := make([]*entities.Image, 0)
+	if err := b.db.Select(&images, query, b.req.Id); err != nil {
+		return make([]*entities.Image, 0)
+	}
+	return images
 }
 
 func (b *updateProductBuilder) deleteOldImages() error {
+	query := `
+		DELETE FROM "images"
+		WHERE "product_id" = $1;
+	`
+
+	images := b.getOldImages()
+	if len(images) > 0 {
+		deleteFileReq := make([]*files.DeleteFileReq, 0)
+		for _, img := range images {
+			deleteFileReq = append(deleteFileReq, &files.DeleteFileReq{
+				Destination: fmt.Sprintf("/images/products/%s", img.FileName),
+			})
+		}
+		b.filesUsecases.DeleteFileOnGCP(deleteFileReq)
+	}
+
+	if _, err := b.tx.ExecContext(context.Background(), query, b.req.Id); err != nil {
+		b.tx.Rollback()
+		return fmt.Errorf("delete images failed: %v", err)
+	}
+
 	return nil
 }
 
@@ -177,31 +208,37 @@ func (b *updateProductBuilder) closeQuery() {
 	b.values = append(b.values, b.req.Id)
 	b.lastStackIndex = len(b.values)
 
-	b.queryFields = append(b.queryFields, fmt.Sprintf(`
+	b.query += fmt.Sprintf(`
 			WHERE "id" = $%d
-		`, b.lastStackIndex))
+		`, b.lastStackIndex)
 }
 
 func (b *updateProductBuilder) updateProduct() error {
+	if _, err := b.tx.ExecContext(context.Background(), b.query, b.values...); err != nil {
+		b.tx.Rollback()
+		return fmt.Errorf("update product failed: %v", err)
+	}
 	return nil
 }
 
 func (b *updateProductBuilder) getQueryFields() []string {
-	return nil
+	return b.queryFields
 }
 
 func (b *updateProductBuilder) getValues() []any {
-	return nil
+	return b.values
 }
 
 func (b *updateProductBuilder) getQuery() string {
-	return ""
+	return b.query
 }
 
-func (b *updateProductBuilder) setQuery(query string) {}
+func (b *updateProductBuilder) setQuery(query string) {
+	b.query = query
+}
 
 func (b *updateProductBuilder) getImagesLen() int {
-	return 0
+	return len(b.req.Image)
 }
 
 func (b *updateProductBuilder) commit() error {
@@ -217,6 +254,47 @@ func UpdateProductEngineer(b IUpdateProductBuilder) *updateProductEngineer {
 	}
 }
 
+func (en *updateProductEngineer) sumQueryFields() {
+	en.builder.updateTitleQuery()
+	en.builder.updateDescriptionQuery()
+	en.builder.updatePriceQuery()
+
+	fields := en.builder.getQueryFields()
+
+	for i := range fields {
+		query := en.builder.getQuery()
+		if i != len(fields)-1 {
+			en.builder.setQuery(query + fields[i] + ",")
+		} else {
+			en.builder.setQuery(query + fields[i])
+		}
+	}
+}
+
 func (en *updateProductEngineer) UpdateProduct() error {
+	en.builder.initTransaction()
+
+	en.builder.initQuery()
+	en.sumQueryFields()
+	en.builder.closeQuery()
+
+	if err := en.builder.updateProduct(); err != nil {
+		return err
+	}
+
+	if err := en.builder.updateCategory(); err != nil {
+		return err
+	}
+
+	if en.builder.getImagesLen() > 0 {
+		if err := en.builder.deleteOldImages(); err != nil {
+			return err
+		}
+	}
+
+	if err := en.builder.commit(); err != nil {
+		return err
+	}
+
 	return nil
 }

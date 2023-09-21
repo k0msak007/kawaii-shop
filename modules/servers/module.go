@@ -11,6 +11,9 @@ import (
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresRepositories"
 	"github.com/k0msak007/kawaii-shop/modules/middlewares/middlewaresUsecases"
 	"github.com/k0msak007/kawaii-shop/modules/monitor/monitorHandlers"
+	"github.com/k0msak007/kawaii-shop/modules/orders/ordersHandlers"
+	"github.com/k0msak007/kawaii-shop/modules/orders/ordersRepositories"
+	"github.com/k0msak007/kawaii-shop/modules/orders/ordersUsecases"
 	"github.com/k0msak007/kawaii-shop/modules/products/productsHandlers"
 	"github.com/k0msak007/kawaii-shop/modules/products/productsRepositories"
 	"github.com/k0msak007/kawaii-shop/modules/products/productsUsecases"
@@ -25,6 +28,7 @@ type IModuleFactory interface {
 	AppinfoModule()
 	FilesModule()
 	ProductsModule()
+	OrdersModule()
 }
 
 type moduleFactory struct {
@@ -107,6 +111,28 @@ func (m *moduleFactory) ProductsModule() {
 
 	router.Post("/", m.mid.JwtAuth(), m.mid.Authorize(2), productsHandler.AddProduct)
 
+	router.Patch("/:product_id", m.mid.JwtAuth(), m.mid.Authorize(2), productsHandler.UpdateProduct)
+
 	router.Get("/", m.mid.ApiKeyAuth(), productsHandler.FindProduct)
 	router.Get("/:product_id", m.mid.ApiKeyAuth(), productsHandler.FindOneProduct)
+
+	router.Delete("/:product_id", m.mid.JwtAuth(), m.mid.Authorize(2), productsHandler.DeleteProduct)
+}
+
+func (m *moduleFactory) OrdersModule() {
+	filesUsecases := filesUsecases.FileUsecase(m.s.cfg)
+	productsRepository := productsRepositories.ProductsRepository(m.s.db, m.s.cfg, filesUsecases)
+
+	ordersRepository := ordersRepositories.OrderRepository(m.s.db)
+	ordersUsecase := ordersUsecases.OrderUsecase(ordersRepository, productsRepository)
+	ordersHandler := ordersHandlers.OrderHandler(m.s.cfg, ordersUsecase)
+
+	router := m.r.Group("/orders")
+
+	router.Post("/", m.mid.JwtAuth(), ordersHandler.InsertOrder)
+
+	router.Get("/", m.mid.JwtAuth(), m.mid.Authorize(2), ordersHandler.FindOrder)
+	router.Get("/:user_id/:order_id", m.mid.JwtAuth(), ordersHandler.FindOneOrder)
+
+	router.Patch("/:user_id/:order_id", m.mid.JwtAuth(), ordersHandler.UpdateOrder)
 }
